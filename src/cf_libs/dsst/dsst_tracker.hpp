@@ -50,7 +50,7 @@ References:
 in Proc. BMVC, 2014.
 
 [2] D. Bolme, et al.,
-“Visual Object Tracking using Adaptive Correlation Filters,”
+ï¿½Visual Object Tracking using Adaptive Correlation Filters,ï¿½
 in Proc. CVPR, 2010.
 */
 
@@ -78,14 +78,17 @@ namespace cf_tracking
 {
     struct DsstParameters
     {
-        double padding = static_cast<double>(1.6);
+        // double padding = static_cast<double>(1.6);
+        double padding = static_cast<double>(2);
         double outputSigmaFactor = static_cast<double>(0.05);
         double lambda = static_cast<double>(0.01);
-        double learningRate = static_cast<double>(0.012);
+        // double learningRate = static_cast<double>(0.012);
+        double learningRate = static_cast<double>(0.3);
         int templateSize = 100;
         int cellSize = 2;
 
-        bool enableTrackingLossDetection = false;
+        // bool enableTrackingLossDetection = false;
+        bool enableTrackingLossDetection = true;
         double psrThreshold = 13.5;
         int psrPeakDel = 1;
 
@@ -93,7 +96,7 @@ namespace cf_tracking
         double scaleSigmaFactor = static_cast<double>(0.25);
         double scaleStep = static_cast<double>(1.02);
         int scaleCellSize = 4;
-        int numberOfScales = 33;
+        int numberOfScales = 66;
 
         //testing
         bool originalVersion = false;
@@ -141,7 +144,8 @@ namespace cf_tracking
                 sp.numberOfScales = paras.numberOfScales;
                 sp.scaleSigmaFactor = static_cast<T>(paras.scaleSigmaFactor);
                 sp.lambda = static_cast<T>(paras.lambda);
-                sp.learningRate = static_cast<T>(paras.learningRate);
+                // sp.learningRate = static_cast<T>(paras.learningRate)*2;
+                sp.learningRate = 0.8;
                 sp.useFhogTranspose = paras.useFhogTranspose;
                 sp.resizeType = paras.resizeType;
                 sp.originalVersion = paras.originalVersion;
@@ -343,31 +347,36 @@ namespace cf_tracking
         }
 
     private:
-        DsstTracker& operator=(const DsstTracker&)
-        {}
+        DsstTracker& operator=(const DsstTracker&) = delete;
 
         bool reinit_(const cv::Mat& image, Rect& boundingBox)
         {
+            /* _pos: center of boundingbox */
             _pos.x = floor(boundingBox.x) + floor(boundingBox.width * consts::c0_5);
             _pos.y = floor(boundingBox.y) + floor(boundingBox.height * consts::c0_5);
             Size targetSize = Size(boundingBox.width, boundingBox.height);
 
+            /* default padding = 1, _templateSz is set to twice the initial target targetSize. */
             _templateSz = Size(floor(targetSize.width * (1 + _PADDING)),
                 floor(targetSize.height * (1 + _PADDING)));
 
             _scale = 1.0;
 
-            if (!_ORIGINAL_VERSION)
-            {
-                // resize to fixed side length _TEMPLATE_SIZE to stabilize FPS
-                if (_templateSz.height > _templateSz.width)
-                    _scale = _templateSz.height / _TEMPLATE_SIZE;
-                else
-                    _scale = _templateSz.width / _TEMPLATE_SIZE;
+            // if (!_ORIGINAL_VERSION)
+            // {
+            //     // std::cout<<"not using _ORIGINAL_VERSION"<<std::endl;
+            //     // std::cout<<"_LEARNING_RATE: "<<_LEARNING_RATE<<std::endl;
 
-                _templateSz = Size(floor(_templateSz.width / _scale), floor(_templateSz.height / _scale));
-            }
-
+            //     // resize to fixed side length _TEMPLATE_SIZE to stabilize FPS
+            //     if (_templateSz.height > _templateSz.width)
+            //         _scale = _templateSz.height / _TEMPLATE_SIZE;
+            //     else
+            //         _scale = _templateSz.width / _TEMPLATE_SIZE;
+            //     /* down-scale the _templateSz */
+            //     _templateSz = Size(floor(_templateSz.width / _scale), floor(_templateSz.height / _scale));
+            // }
+            
+            /* _baseTargetSz: dowwn-scaling targetSize */
             _baseTargetSz = Size(targetSize.width / _scale, targetSize.height / _scale);
             _templateScaleFactor = 1 / _scale;
 
@@ -377,6 +386,8 @@ namespace cf_tracking
             // translation filter output target
             T outputSigma = sqrt(_templateSz.area() / ((1 + _PADDING) * (1 + _PADDING)))
                 * _OUTPUT_SIGMA_FACTOR / _CELL_SIZE;
+            
+            /* _y selected to be a Gaussian function with a parametrized standard deviation */
             _y = gaussianShapedLabels2D<T>(outputSigma, templateSzByCells);
             calcDft(_y, _yf, 0);
 
@@ -385,6 +396,7 @@ namespace cf_tracking
             cv::Mat cosWindowY;
             cosWindowY = hanningWindow<T>(_yf.rows);
             cosWindowX = hanningWindow<T>(_yf.cols);
+            /* used to alleviate the boundary effect */
             _cosWindow = cosWindowY * cosWindowX.t();
 
             std::shared_ptr<DFC> hfNum(0);
@@ -399,7 +411,8 @@ namespace cf_tracking
             if (_scaleEstimator)
             {
                 _scaleEstimator->reinit(image, _pos, targetSize,
-                    _scale * _templateScaleFactor);
+                    // _scale * _templateScaleFactor);
+                    _templateScaleFactor);
             }
 
             _lastBoundingBox = boundingBox;
@@ -432,6 +445,7 @@ namespace cf_tracking
             const Point& pos, T scale) const
         {
             cv::Mat patch;
+            /* restore orignial _templateSz */
             Size patchSize = _templateSz * scale;
 
             if (getSubWindow(image, patch, patchSize, pos) == false)

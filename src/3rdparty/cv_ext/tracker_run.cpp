@@ -183,7 +183,7 @@ bool TrackerRun::init()
     imgAcqParas.isMock = _paras.isMockSequence;
     imgAcqParas.sequencePath = _paras.sequencePath;
     _cap.open(imgAcqParas);
-
+    std::cout<<"imgAcqParas.sequencePath: "<<imgAcqParas.sequencePath<<std::endl;
     if (!_cap.isOpened())
     {
         cerr << "Could not open device/sequence/video!" << endl;
@@ -382,7 +382,7 @@ bool TrackerRun::update()
             }
         }
 
-        char c = (char)waitKey(10);
+        char c = (char)waitKey(0);
 
         if (c == 27)
         {

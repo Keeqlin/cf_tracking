@@ -73,7 +73,9 @@ namespace cf_tracking
         T scaleSigmaFactor = static_cast<T>(1.0 / 4.0);
 
         T lambda = static_cast<T>(0.01);
-        T learningRate = static_cast<T>(0.025);
+        // T learningRate = static_cast<T>(0.025);
+        T learningRate = static_cast<T>(0.3);
+
 
         // testing
         bool useFhogTranspose = false;
