@@ -65,10 +65,10 @@ namespace cf_tracking
     cv::Mat numberToColVector(int n)
     {
         cv::Mat_<T> colVec(1, n);
-
         for (int i = 0; i < n; ++i)
+        {
             colVec.template at<T>(0, i) = static_cast<T>(i + 1);
-
+        }
         return colVec;
     }
 
@@ -106,7 +106,7 @@ namespace cf_tracking
 
     // http://home.isr.uc.pt/~henriques/circulant/
     template <typename T>
-    cv::Mat gaussianShapedLabels2D(T sigma, const cv::Size_<T>& size)
+cv::Mat gaussianShapedLabels2D(T sigma, const cv::Size_<T>& size)
     {
         int width = static_cast<int>(size.width);
         int height = static_cast<int>(size.height);
@@ -206,6 +206,13 @@ namespace cf_tracking
         return w;
     }
 
+
+    template<typename T>
+    inline cv::Mat cosWindow(int rows, int cols){
+        return hanningWindow<T>(rows) * hanningWindow<T>(cols).t();
+    }
+
+
     template <typename T>
     void divideSpectrumsNoCcs(const cv::Mat& numerator, const cv::Mat& denominator, cv::Mat& dst)
     {
@@ -265,10 +272,11 @@ namespace cf_tracking
     bool getSubWindow(const cv::Mat& image, cv::Mat& patch, const cv::Size_<T>& size,
         const cv::Point_<T>& pos, cv::Point_<T>* posInSubWindow = 0)
     {
-        int width = static_cast<int>(size.width);
+        int width  = static_cast<int>(size.width);
         int height = static_cast<int>(size.height);
 
-        int xs = static_cast<int>(std::floor(pos.x) - std::floor(width / 2.0)) + 1;
+        /* (xs,ys): Upleft corner of pos */
+        int xs = static_cast<int>(std::floor(pos.x) - std::floor(width  / 2.0)) + 1;
         int ys = static_cast<int>(std::floor(pos.y) - std::floor(height / 2.0)) + 1;
         T posInSubWindowX = pos.x - xs;
         T posInSubWindowY = pos.y - ys;
@@ -294,15 +302,17 @@ namespace cf_tracking
             diffBottomX = std::min(0, diffBottomX);
             diffBottomY = std::min(0, diffBottomY);
 
-            copyMakeBorder(subWindow, subWindow, diffTopY, -diffBottomY,
-                diffTopX, -diffBottomX, cv::BORDER_REPLICATE);
+            copyMakeBorder(subWindow, subWindow, 
+                           diffTopY, -diffBottomY,
+                           diffTopX, -diffBottomX, cv::BORDER_REPLICATE);
         }
 
-        // this if can be true if the sub window
-        // is completely outside the image
-        if (width != subWindow.cols ||
+        /* if the sub-window is completely outside the image */
+        if (width  != subWindow.cols ||
             height != subWindow.rows)
+        {
             return false;
+        }
 
         if (posInSubWindow != 0)
         {
@@ -311,7 +321,6 @@ namespace cf_tracking
         }
 
         patch = subWindow;
-
         return true;
     }
 }

@@ -58,9 +58,9 @@ namespace cf_tracking
     {
         int interpolationType = cv::INTER_AREA;
 
-        if (dsize.width > source.cols
-            || dsize.height > source.rows)
+        if (dsize.width > source.cols || dsize.height > source.rows){
             interpolationType = cv::INTER_LINEAR;
+        }
 
         cv::resize(source, dst, dsize, 0, 0, interpolationType);
     }

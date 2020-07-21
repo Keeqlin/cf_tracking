@@ -88,6 +88,8 @@ set(CF_LIB_COMMON_SOURCES
     src/cf_libs/common/cf_tracker.hpp
     src/cf_libs/common/tracker_debug.hpp
     src/cf_libs/common/scale_estimator.hpp
+    src/cf_libs/common/cn_feature.hpp
+    src/cf_libs/common/cn_feature.cpp
     src/cf_libs/common/cv_ext.hpp
     ${CF_CV_EXT_DIR}/shift.cpp
     ${CF_CV_EXT_DIR}/shift.hpp

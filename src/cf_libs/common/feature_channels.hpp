@@ -49,14 +49,14 @@ namespace cf_tracking
     {
     public:
         static void mulValueFeatures(std::shared_ptr<FeatureChannels_>& m,
-            const T value)
+                                     const T value)
         {
             for (int i = 0; i < NUMBER_OF_CHANNELS; ++i)
                 m->channels[i] *= value;
         }
 
         static void addFeatures(std::shared_ptr<FeatureChannels_>& A,
-            const std::shared_ptr<FeatureChannels_>& B)
+                                const std::shared_ptr<FeatureChannels_>& B)
         {
             for (int i = 0; i < NUMBER_OF_CHANNELS; ++i)
                 A->channels[i] += B->channels[i];
@@ -81,14 +81,14 @@ namespace cf_tracking
         }
 
         static void mulFeatures(std::shared_ptr<FeatureChannels_>& features,
-            const cv::Mat& m)
+                                const cv::Mat& m)
         {
             for (int i = 0; i < NUMBER_OF_CHANNELS; ++i)
                 features->channels[i] = features->channels[i].mul(m);
         }
 
         static std::shared_ptr<FeatureChannels_> dftFeatures(
-            const std::shared_ptr<FeatureChannels_>& features, int flags = 0)
+                    const std::shared_ptr<FeatureChannels_>& features, int flags = 0)
         {
             std::shared_ptr<FeatureChannels_> res(new FeatureChannels_());
 
@@ -99,7 +99,7 @@ namespace cf_tracking
         }
 
         static std::shared_ptr<FeatureChannels_> idftFeatures(
-            const std::shared_ptr<FeatureChannels_>& features)
+                    const std::shared_ptr<FeatureChannels_>& features)
         {
             std::shared_ptr<FeatureChannels_> res(new FeatureChannels_());
 
@@ -145,8 +145,8 @@ namespace cf_tracking
         }
 
         static std::shared_ptr<FeatureChannels_> mulSpectrumsFeatures(const std::shared_ptr<FeatureChannels_>& Af,
-            const std::shared_ptr<FeatureChannels_>& Bf,
-            bool conjBf)
+                                                                      const std::shared_ptr<FeatureChannels_>& Bf,
+                                                                      bool conjBf)
         {
             std::shared_ptr<FeatureChannels_> resf(new FeatureChannels_());
 
@@ -157,8 +157,8 @@ namespace cf_tracking
         }
 
         static std::shared_ptr<FeatureChannels_> mulSpectrumsFeatures(const cv::Mat& Af,
-            const std::shared_ptr<FeatureChannels_>& Bf,
-            bool conjBf = false)
+                                                                      const std::shared_ptr<FeatureChannels_>& Bf,
+                                                                      bool conjBf = false)
         {
             std::shared_ptr<FeatureChannels_> resf(new FeatureChannels_());
 
@@ -181,6 +181,9 @@ namespace cf_tracking
 
     template <class T>
     using DsstFeatureChannels = FeatureChannels_ < 28, T > ;
+
+    template <class T>
+    using ColorNameFeatureChannels = FeatureChannels_ < 2, T > ;
 }
 
 #endif

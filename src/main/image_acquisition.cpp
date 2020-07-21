@@ -30,6 +30,7 @@
 */
 
 #include "image_acquisition.hpp"
+#include <iostream>
 
 ImageAcquisition::ImageAcquisition()
 {
@@ -81,7 +82,6 @@ void ImageAcquisition::open(ImgAcqParas paras)
         {
             std::string sequenceExpansion =
                 _paras.sequencePath + _paras.expansionStr;
-
             _cvCap.open(sequenceExpansion);
         }
     }

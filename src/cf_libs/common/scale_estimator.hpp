@@ -60,6 +60,7 @@ in Proc. BMVC, 2014.
 #include "feature_channels.hpp"
 #include "gradientMex.hpp"
 #include "math_helper.hpp"
+#include "cn_feature.hpp"
 
 namespace cf_tracking
 {
@@ -67,7 +68,7 @@ namespace cf_tracking
     struct ScaleEstimatorParas
     {
         int scaleCellSize = 4;
-        T scaleModelMaxArea = static_cast<T>(512);
+        T scaleModelMaxArea = static_cast<T>(1024);
         T scaleStep = static_cast<T>(1.02);
         int numberOfScales = 33;
         T scaleSigmaFactor = static_cast<T>(1.0 / 4.0);
@@ -75,10 +76,13 @@ namespace cf_tracking
         T lambda = static_cast<T>(0.01);
         // T learningRate = static_cast<T>(0.025);
         T learningRate = static_cast<T>(0.3);
-
+   
 
         // testing
         bool useFhogTranspose = false;
+        // bool useColor_Names = false;
+        bool useColor_Names = true;
+
         int resizeType = cv::INTER_LINEAR;
         bool debugOutput = true;
         bool originalVersion = false;
@@ -89,11 +93,12 @@ namespace cf_tracking
     {
     public:
         typedef FhogFeatureChannels<T> FFC;
+        typedef ColorNameFeatureChannels<T> CNC;
         typedef cv::Size_<T> Size;
         typedef cv::Point_<T> Point;
         typedef mat_consts::constants<T> consts;
 
-        ScaleEstimator(ScaleEstimatorParas<T> paras) :
+        ScaleEstimator(ScaleEstimatorParas<T> paras):
             _frameIdx(0),
             _isInitialized(false),
             _SCALE_CELL_SIZE(paras.scaleCellSize),
@@ -106,7 +111,8 @@ namespace cf_tracking
             _TYPE(cv::DataType<T>::type),
             _RESIZE_TYPE(paras.resizeType),
             _DEBUG_OUTPUT(paras.debugOutput),
-            _ORIGINAL_VERSION(paras.originalVersion)
+            _ORIGINAL_VERSION(paras.originalVersion),
+            _useColor_Names(paras.useColor_Names)
         {
             // init dft
             cv::Mat initDft = (cv::Mat_<T>(1, 1) << 1);
@@ -125,21 +131,30 @@ namespace cf_tracking
                 fhogToCvCol = &piotr::fhogToCvColT;
             else
                 fhogToCvCol = &piotr::fhogToCol;
+
+            if (_useColor_Names)
+            {
+                ColorNameParameters cn_params;
+                CN_feature_Ptr = new ColorName(cn_params);
+            }
         }
 
+        virtual ~ScaleEstimator(){}
+
         bool reinit(const cv::Mat& image, const Point& pos,
-            const Size& targetSize, const T& currentScaleFactor)
+                    const Size& targetSize, const T& currentScaleFactor)
         {
             _targetSize = targetSize;
-            // scale filter output target
             T scaleSigma = static_cast<T>(sqrt(_N_SCALES) * _SCALE_SIGMA_FACTOR);
+            // T scaleSigma = static_cast<T>(_N_SCALES * _SCALE_SIGMA_FACTOR);
             cv::Mat colScales = numberToColVector<T>(_N_SCALES);
             T scaleHalf = static_cast<T>(ceil(_N_SCALES / 2.0));
-
+            /*  { -(S-1)/2, ..., (S-1)/2 } */
             cv::Mat ss = colScales - scaleHalf;
             cv::Mat ys;
-            exp(-0.5 * ss.mul(ss) / (scaleSigma * scaleSigma), ys);
+            cv::exp(-0.5 * ss.mul(ss) / (scaleSigma * scaleSigma), ys);
 
+            /* scale filter output target */
             cv::Mat ysf;
             // always use CCS here; regular COMPLEX_OUTPUT is bugged
             cv::dft(ys, ysf, cv::DFT_ROWS);
@@ -155,22 +170,35 @@ namespace cf_tracking
                 _scaleWindow = hanningWindow<T>(_N_SCALES);
             }
 
+            /*  { (S-1)/2, ..., -(S-1)/2 } */
             ss = scaleHalf - colScales;
             _scaleFactors = pow<T, T>(_SCALE_STEP, ss);
             _scaleModelFactor = sqrt(_SCALE_MODEL_MAX_AREA / targetSize.area());
             _scaleModelSz = sizeFloor(targetSize *  _scaleModelFactor);
 
             // expand ysf to have the number of rows of scale samples
-            int ysfRow = static_cast<int>(floor(_scaleModelSz.width / _SCALE_CELL_SIZE)
-                * floor(_scaleModelSz.height / _SCALE_CELL_SIZE) * FFC::numberOfChannels());
-
+            int ysfRow;
+            
+            if (_useColor_Names)
+            {
+                ysfRow = static_cast<int>(_scaleModelSz.width * _scaleModelSz.height * CN_feature_Ptr->get_compressed_dim());
+            }
+            else
+            {
+                ysfRow = static_cast<int>(floor(_scaleModelSz.width  / _SCALE_CELL_SIZE) * 
+                                          floor(_scaleModelSz.height / _SCALE_CELL_SIZE) * 
+                                          FFC::numberOfChannels());
+            }
             _ysf = repeat(ysf, ysfRow, 1);
+ 
 
             cv::Mat sfNum, sfDen;
-
-            if (getScaleTrainingData(image, pos,
-                currentScaleFactor, sfNum, sfDen) == false)
+            if (getScaleTrainingData(image, pos, 
+                                     currentScaleFactor, 
+                                     sfNum, sfDen) == false)
+            {
                 return false;
+            }
 
             _sfNumerator = sfNum;
             _sfDenominator = sfDen;
@@ -180,10 +208,9 @@ namespace cf_tracking
             return true;
         }
 
-        virtual ~ScaleEstimator(){}
-
+        
         bool detectScale(const cv::Mat& image, const Point& pos,
-            T& currentScaleFactor) const
+                         T& currentScaleFactor) const
         {
             cv::Mat xs;
             if (getScaleFeatures(image, pos, xs, currentScaleFactor) == false)
@@ -207,7 +234,6 @@ namespace cf_tracking
             cv::Point recoveredScale;
             double maxScaleResponse;
             minMaxLoc(scaleResponse, 0, &maxScaleResponse, 0, &recoveredScale);
-
             currentScaleFactor *= _scaleFactors.at<T>(recoveredScale);
 
             currentScaleFactor = std::max(currentScaleFactor, _MIN_SCALE_FACTOR);
@@ -216,26 +242,29 @@ namespace cf_tracking
         }
 
         bool updateScale(const cv::Mat& image, const Point& pos,
-            const T& currentScaleFactor)
+                         const T& currentScaleFactor)
         {
             ++_frameIdx;
             cv::Mat sfNum, sfDen;
-
+            if(_useColor_Names)
+            {
+                CN_feature_Ptr->set_update();
+            }
             if (getScaleTrainingData(image, pos, currentScaleFactor,
-                sfNum, sfDen) == false)
+                                     sfNum, sfDen) == false)
                 return false;
 
             // both summands are in CCS packaged format; thus adding is OK
             _sfDenominator = (1 - _LEARNING_RATE) * _sfDenominator + _LEARNING_RATE * sfDen;
-            _sfNumerator = (1 - _LEARNING_RATE) * _sfNumerator + _LEARNING_RATE * sfNum;
+            _sfNumerator   = (1 - _LEARNING_RATE) * _sfNumerator   + _LEARNING_RATE * sfNum;
             return true;
         }
 
     private:
         bool getScaleTrainingData(const cv::Mat& image,
-            const Point& pos,
-            const T& currentScaleFactor,
-            cv::Mat& sfNum, cv::Mat& sfDen) const
+                                  const Point& pos,
+                                  const T& currentScaleFactor,
+                                  cv::Mat& sfNum, cv::Mat& sfDen) const
         {
             cv::Mat xs;
             if (getScaleFeatures(image, pos, xs, currentScaleFactor) == false)
@@ -251,10 +280,11 @@ namespace cf_tracking
         }
 
         bool getScaleFeatures(const cv::Mat& image, const Point& pos,
-            cv::Mat& features, T scale) const
+                              cv::Mat& features, T scale) const
         {
             int colElems = _ysf.rows;
-            features = cv::Mat::zeros(colElems, _N_SCALES, _TYPE);
+            /* (feature_dim*_scaleModelSz.size()) x _N_SCALES */
+            features = cv::Mat::zeros(colElems, _N_SCALES, _TYPE); 
             cv::Mat patch;
             cv::Mat patchResized;
             cv::Mat patchResizedFloat;
@@ -263,8 +293,9 @@ namespace cf_tracking
 
             // do not extract features for first and last scale,
             // since the scaleWindow will always multiply these with 0;
-            // extract first required sub window separately; smaller scales are extracted
-            // from this patch to avoid multiple border replicates on out of image patches
+            // extract first required sub-window separately; 
+            // smaller scales are extracted from this patch 
+            // to avoid multiple border replicates on out of image patches
             int idxScale = 1;
             T patchScale = scale * _scaleFactors.at<T>(0, idxScale);
             Size firstPatchSize = sizeFloor(_targetSize * patchScale);
@@ -279,9 +310,28 @@ namespace cf_tracking
             else
                 cv::resize(firstPatch, patchResized, _scaleModelSz, 0, 0, _RESIZE_TYPE);
 
-            patchResized.convertTo(patchResizedFloat, CV_32FC(3));
-            fhogToCvCol(patchResizedFloat, features, _SCALE_CELL_SIZE, idxScale, cosFactor);
 
+            std::vector<cv::Mat> CN_feature;
+            if (_useColor_Names)
+            {
+                if(_isInitialized == false)
+                {  
+                    CN_feature = CN_feature_Ptr->init(patchResized);
+                }
+                else
+                {
+                    CN_feature = CN_feature_Ptr->update(patchResized);
+                }
+                
+                cnToCvCol(CN_feature, features, idxScale, cosFactor);
+            }
+            else
+            {
+                patchResized.convertTo(patchResizedFloat, CV_32FC(3));
+                fhogToCvCol(patchResizedFloat, features, _SCALE_CELL_SIZE, idxScale, cosFactor);
+            }
+            
+            
             for (idxScale = 2; idxScale < _N_SCALES - 1; ++idxScale)
             {
                 T patchScale = scale *_scaleFactors.at<T>(0, idxScale);
@@ -290,16 +340,41 @@ namespace cf_tracking
 
                 if (getSubWindow(firstPatch, patch, patchSize, posInFirstPatch) == false)
                     return false;
-
+                
                 if (_ORIGINAL_VERSION)
                     depResize(patch, patchResized, _scaleModelSz);
                 else
                     cv::resize(patch, patchResized, _scaleModelSz, 0, 0, _RESIZE_TYPE);
 
-                patchResized.convertTo(patchResizedFloat, CV_32FC(3));
-                fhogToCvCol(patchResizedFloat, features, _SCALE_CELL_SIZE, idxScale, cosFactor);
+                
+                
+                if (_useColor_Names)
+                {
+                    CN_feature = CN_feature_Ptr->update(patchResized);
+                    cnToCvCol(CN_feature, features, idxScale, cosFactor);
+                }
+                else
+                {
+                    patchResized.convertTo(patchResizedFloat, CV_32FC(3));
+                    fhogToCvCol(patchResizedFloat, features, _SCALE_CELL_SIZE, idxScale, cosFactor);
+                }
             }
 
+          
+            
+            // /* visualization feature */
+            // for(int i = 0; i< features.size().width; i++){
+            //     std::string win_name = "fhog_"+std::to_string(i);
+            //     cv::Mat tmpCol = features.col(i).clone();
+            //     // std::cout<<"i :"<<i<<std::endl;
+            //     // std::cout<<"tmpCol.size(): "<<tmpCol.size()<<std::endl;
+			//     cv::Mat tmpCol2(_scaleModelSz, tmpCol.type());
+			//     memcpy(tmpCol2.data, tmpCol.data, features.rows * sizeof(decltype(*(tmpCol.data))));
+            //     cv::Mat img;
+            //     cv::normalize(tmpCol2, img, 0, 255, cv::NORM_MINMAX, CV_8U);
+            //     cv::imshow(win_name, img);
+            // }
+            // cv::waitKey(0);
             return true;
         }
 
@@ -307,6 +382,10 @@ namespace cf_tracking
         typedef void(*fhogToCvRowPtr)
             (const cv::Mat& img, cv::Mat& cvFeatures, int binSize, int rowIdx, T cosFactor);
         fhogToCvRowPtr fhogToCvCol = 0;
+        bool _useColor_Names;
+
+
+        ColorName *CN_feature_Ptr = 0;
 
         cv::Mat _scaleWindow;
         T _scaleModelFactor = 0;
